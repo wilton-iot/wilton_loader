@@ -152,7 +152,7 @@ char* wilton_load_script(const char* url, int url_len,
                 auto span = read_zip_or_fs_resource(url_str);
                 *contents_out = span.data();
                 *contents_out_len = static_cast<int>(span.size());
-            } catch (const std::exception& etpath) {
+            } catch (const std::exception& /* etpath */) {
                 throw wilton::support::exception(TRACEMSG(epath.what()));
             }
         }
