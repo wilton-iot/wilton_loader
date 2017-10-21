@@ -139,7 +139,7 @@ char* wilton_load_script(const char* url, int url_len,
             auto span = read_zip_or_fs_resource(url_str);
             *contents_out = span.data();
             *contents_out_len = static_cast<int>(span.size());
-        } catch (const std::exception epath) {
+        } catch (const std::exception& epath) {
             if (sl::utils::ends_with(url_str, ".js")) {
                 url_str.resize(url_str.length() - 3);
             }
@@ -153,7 +153,7 @@ char* wilton_load_script(const char* url, int url_len,
                 *contents_out = span.data();
                 *contents_out_len = static_cast<int>(span.size());
             } catch (const std::exception& etpath) {
-                throw wilton::support::exception(TRACEMSG(epath.what() + "\n" + etpath.what()));
+                throw wilton::support::exception(TRACEMSG(epath.what()));
             }
         }
         return nullptr;
