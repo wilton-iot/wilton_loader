@@ -9,6 +9,9 @@
 #include "wilton/wilton_loader.h"
 
 #include <cstdint>
+#include <atomic>
+#include <string>
+#include <vector>
 
 #include "staticlib/config.hpp"
 #include "staticlib/json.hpp"
@@ -25,33 +28,32 @@ namespace { // anonymous
 
 const std::string LOGGER = std::string("wilton.loader");
 
-sl::support::observer_ptr<sl::unzip::file_index> static_modules_idx(sl::unzip::file_index* index = nullptr) {
-    static std::unique_ptr<sl::unzip::file_index> idx = std::unique_ptr<sl::unzip::file_index>(index);
-    return sl::support::make_observer_ptr(idx.get());
+std::atomic_bool initialized{false};
+
+std::vector<sl::unzip::file_index>& static_modules_indices(
+        std::vector<sl::unzip::file_index> vec = std::vector<sl::unzip::file_index>()) {
+    static std::vector<sl::unzip::file_index> indices = std::move(vec);
+    return indices;
 }
 
 sl::io::span<char> read_zip_resource(const std::string& path) {
-    // get modules.zip index
-    auto idx_ptr = static_modules_idx();
-    if (!idx_ptr.has_value()) {
-        throw wilton::support::exception(TRACEMSG(
-                "Modules index not loaded, requested zip path: [" + path + "]"));
-    }
-    auto& idx = *idx_ptr;
-    // normalize path
-    auto path_norm = sl::tinydir::normalize_path(path);
-    // load zip entry
-    auto& zippath = idx.get_zip_file_path();
-    if (path.length() > zippath.length() + 1 && sl::utils::starts_with(path_norm, zippath)) {
-        auto en_path = path_norm.substr(zippath.length() + 1);
-        auto stream = sl::unzip::open_zip_entry(idx, en_path);
-        auto src = sl::io::streambuf_source(stream.get());
-        auto sink = sl::io::make_array_sink(wilton_alloc, wilton_free);
-        sl::io::copy_all(src, sink);
-        return sink.release();
+    // search modules.zip indices
+    for (auto& idx : static_modules_indices()) {
+        // normalize path
+        auto path_norm = sl::tinydir::normalize_path(path);
+        // load zip entry
+        auto& zippath = idx.get_zip_file_path();
+        if (path.length() > zippath.length() + 1 && sl::utils::starts_with(path_norm, zippath)) {
+            auto en_path = path_norm.substr(zippath.length() + 1);
+            auto stream = sl::unzip::open_zip_entry(idx, en_path);
+            auto src = sl::io::streambuf_source(stream.get());
+            auto sink = sl::io::make_array_sink(wilton_alloc, wilton_free);
+            sl::io::copy_all(src, sink);
+            return sink.release();
+        }
     }
     throw wilton::support::exception(TRACEMSG("Error loading zip entry," +
-            " path: [" + path + "], zip file: [" + zippath + "]"));
+            " path: [" + path + "]"));
 }
 
 sl::io::span<char> read_fs_resource(const std::string& path) {
@@ -102,12 +104,25 @@ char* wilton_loader_initialize(const char* conf_json, int conf_json_len) /* noex
     if (!sl::support::is_uint32_positive(conf_json_len)) return wilton::support::alloc_copy(TRACEMSG(
             "Invalid 'conf_json_len' parameter specified: [" + sl::support::to_string(conf_json_len) + "]"));
     try {
-        auto cf = sl::json::load({conf_json, conf_json_len});
-        auto modpath = cf["requireJs"]["baseUrl"].as_string_nonempty_or_throw("requireJs.baseUrl");
-        if (sl::utils::starts_with(modpath, wilton::support::zip_proto_prefix)) {
-            auto zippath = modpath.substr(wilton::support::zip_proto_prefix.length());
-            auto zippath_norm = sl::tinydir::normalize_path(zippath);
-            static_modules_idx(new sl::unzip::file_index(zippath_norm));
+        bool the_false = false;
+        if (initialized.compare_exchange_strong(the_false, true, std::memory_order_acq_rel)) {
+            auto cf = sl::json::load({conf_json, conf_json_len});
+            auto stdpath = cf["requireJs"]["baseUrl"].as_string_nonempty_or_throw("requireJs.baseUrl");
+            auto vec = std::vector<sl::unzip::file_index>();
+            if (sl::utils::starts_with(stdpath, wilton::support::zip_proto_prefix)) {
+                auto zippath = stdpath.substr(wilton::support::zip_proto_prefix.length());
+                auto zippath_norm = sl::tinydir::normalize_path(zippath);
+                vec.emplace_back(sl::unzip::file_index(zippath_norm));
+            }
+            for (auto& fi : cf["requireJs"]["paths"].as_object_or_throw("requireJs.paths")) {
+                auto modpath = fi.val().as_string_nonempty_or_throw("requireJs.paths[]");
+                if (sl::utils::starts_with(modpath, wilton::support::zip_proto_prefix)) {
+                    auto zippath = modpath.substr(wilton::support::zip_proto_prefix.length());
+                    auto zippath_norm = sl::tinydir::normalize_path(zippath);
+                    vec.emplace_back(sl::unzip::file_index(zippath_norm));
+                }
+            }
+            static_modules_indices(std::move(vec));
         }
         return nullptr;
     } catch (const std::exception& e) {

@@ -54,11 +54,11 @@ extern "C" char* wilton_module_init() {
         auto deferred = sl::support::defer([conf]() STATICLIB_NOEXCEPT {
             wilton_free(conf);
         });
-        
+
         // init unzip index
         auto err_init = wilton_loader_initialize(const_cast<const char*>(conf), len);
         if (nullptr != err_init) wilton::support::throw_wilton_error(err_init, TRACEMSG(err_init));
-        
+
         // register calls
         wilton::support::register_wiltoncall("load_module_resource", wilton::loader::load_module_resource);
         wilton::support::register_wiltoncall("load_module_script", wilton::loader::load_module_script);
