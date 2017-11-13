@@ -105,7 +105,8 @@ char* wilton_loader_initialize(const char* conf_json, int conf_json_len) /* noex
             "Invalid 'conf_json_len' parameter specified: [" + sl::support::to_string(conf_json_len) + "]"));
     try {
         bool the_false = false;
-        if (initialized.compare_exchange_strong(the_false, true, std::memory_order_acq_rel)) {
+        if (initialized.compare_exchange_strong(the_false, true, std::memory_order_acq_rel,
+                std::memory_order_relaxed)) {
             auto cf = sl::json::load({conf_json, conf_json_len});
             auto stdpath = cf["requireJs"]["baseUrl"].as_string_nonempty_or_throw("requireJs.baseUrl");
             auto vec = std::vector<sl::unzip::file_index>();
