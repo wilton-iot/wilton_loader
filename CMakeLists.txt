@@ -4,12 +4,6 @@ cmake_minimum_required ( VERSION 2.8.12 )
 # project
 project ( wilton_loader CXX )
 
-# dependencies add
-if ( STATICLIB_TOOLCHAIN MATCHES "windows_[^_]+_[^_]+" )
-    staticlib_add_subdirectory ( ${STATICLIB_DEPS}/external_zlib )
-endif ( )
-staticlib_add_subdirectory ( ${STATICLIB_DEPS}/staticlib_unzip )
-
 # dependencies check
 set ( ${PROJECT_NAME}_DEPS
         staticlib_config
@@ -19,8 +13,7 @@ set ( ${PROJECT_NAME}_DEPS
         staticlib_utils
         staticlib_json
         staticlib_tinydir
-        staticlib_unzip
-        zlib )
+        staticlib_unzip )
 staticlib_pkg_check_modules ( ${PROJECT_NAME}_DEPS_PC REQUIRED ${PROJECT_NAME}_DEPS )
 
 # library
@@ -44,6 +37,10 @@ target_link_libraries ( ${PROJECT_NAME} PRIVATE
         wilton_core
         wilton_logging
         ${${PROJECT_NAME}_DEPS_PC_LIBRARIES} )
+if ( STATICLIB_TOOLCHAIN MATCHES "(linux)_.+" )
+    target_link_libraries ( ${PROJECT_NAME} PRIVATE
+            z )
+endif ( )
 
 target_include_directories ( ${PROJECT_NAME} BEFORE PRIVATE 
         ${CMAKE_CURRENT_LIST_DIR}/src
