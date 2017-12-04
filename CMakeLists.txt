@@ -25,6 +25,7 @@ if ( STATICLIB_TOOLCHAIN MATCHES "windows_.+" )
             ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.rc )
     set ( ${PROJECT_NAME}_RESFILE ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.rc )
     set ( ${PROJECT_NAME}_DEFFILE ${CMAKE_CURRENT_LIST_DIR}/resources/${PROJECT_NAME}.def )
+    list ( REMOVE_ITEM ${PROJECT_NAME}_DEPS_PC_LIBRARIES z )
 endif ( )
 
 add_library ( ${PROJECT_NAME} SHARED
@@ -36,6 +37,7 @@ add_library ( ${PROJECT_NAME} SHARED
 target_link_libraries ( ${PROJECT_NAME} PRIVATE
         wilton_core
         wilton_logging
+        wilton_zip
         ${${PROJECT_NAME}_DEPS_PC_LIBRARIES} )
 if ( STATICLIB_TOOLCHAIN MATCHES "(linux)_.+" )
     target_link_libraries ( ${PROJECT_NAME} PRIVATE
