@@ -79,24 +79,6 @@ sl::io::span<char> read_zip_or_fs_resource(const std::string& url) {
     }
 }
 
-std::string read_main_from_package_json(const std::string& url) {
-    std::string pjurl = std::string(url) + "package.json";
-    try {
-        auto span = read_zip_or_fs_resource(pjurl);
-        auto deferred = sl::support::defer([span] () STATICLIB_NOEXCEPT {
-            wilton_free(span.data());
-        });
-        auto pj = sl::json::load(span);
-        auto main = pj["main"].as_string("index.js");
-        if (!sl::utils::ends_with(main, ".js")) {
-            main.append(".js");
-        }
-        return main;
-    } catch (const std::exception&) {
-        return "index.js";
-    }
-}
-
 } // namespace
 
 char* wilton_loader_initialize(const char* conf_json, int conf_json_len) /* noexcept */ {
@@ -143,43 +125,6 @@ char* wilton_load_resource(const char* url, int url_len,
         auto span = read_zip_or_fs_resource(url_str);
         *contents_out = span.data();
         *contents_out_len = static_cast<int>(span.size());
-        return nullptr;
-    } catch (const std::exception& e) {
-        return wilton::support::alloc_copy(TRACEMSG(e.what() + "\nException raised"));
-    }
-}
-
-// todo: think about dropping exceptions
-char* wilton_load_script(const char* url, int url_len,
-        char** contents_out, int* contents_out_len) /* noexcept */ {
-    if (nullptr == url) return wilton::support::alloc_copy(TRACEMSG("Null 'url' parameter specified"));
-    if (!sl::support::is_uint16_positive(url_len)) return wilton::support::alloc_copy(TRACEMSG(
-            "Invalid 'url_len' parameter specified: [" + sl::support::to_string(url_len) + "]"));
-    if (nullptr == contents_out) return wilton::support::alloc_copy(TRACEMSG("Null 'contents_out' parameter specified"));
-    if (nullptr == contents_out_len) return wilton::support::alloc_copy(TRACEMSG("Null 'contents_out_len' parameter specified"));
-    try {
-        auto url_str = std::string(url, static_cast<uint16_t>(url_len));
-        try {
-            auto span = read_zip_or_fs_resource(url_str);
-            *contents_out = span.data();
-            *contents_out_len = static_cast<int>(span.size());
-        } catch (const std::exception& epath) {
-            if (sl::utils::ends_with(url_str, ".js")) {
-                url_str.resize(url_str.length() - 3);
-            }
-            if (!sl::utils::ends_with(url_str, "/")) {
-                url_str.push_back('/');
-            }
-            auto main = read_main_from_package_json(url_str);
-            url_str.append(main);
-            try {
-                auto span = read_zip_or_fs_resource(url_str);
-                *contents_out = span.data();
-                *contents_out_len = static_cast<int>(span.size());
-            } catch (const std::exception& /* etpath */) {
-                throw wilton::support::exception(TRACEMSG(epath.what()));
-            }
-        }
         return nullptr;
     } catch (const std::exception& e) {
         return wilton::support::alloc_copy(TRACEMSG(e.what() + "\nException raised"));

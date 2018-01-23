@@ -24,12 +24,6 @@ char* wilton_load_resource(
         char** contents_out,
         int* contents_out_len);
 
-char* wilton_load_script(
-        const char* url,
-        int url_len,
-        char** contents_out,
-        int* contents_out_len);
-
 #ifdef __cplusplus
 }
 #endif

@@ -1,6 +1,5 @@
 
 EXPORTS
     wilton_load_resource
-    wilton_load_script
-    
+
     wilton_module_init
