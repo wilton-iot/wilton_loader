@@ -34,7 +34,7 @@
 #include "staticlib/unzip.hpp"
 #include "staticlib/utils.hpp"
 
-#include "wilton/support/alloc_copy.hpp"
+#include "wilton/support/alloc.hpp"
 #include "wilton/support/exception.hpp"
 #include "wilton/support/logging.hpp"
 #include "wilton/support/misc.hpp"
@@ -139,7 +139,7 @@ char* wilton_load_resource(const char* url, int url_len,
         auto url_str = std::string(url, static_cast<uint16_t>(url_len));
         auto span = read_zip_or_fs_resource(url_str);
         *contents_out = span.data();
-        *contents_out_len = static_cast<int>(span.size());
+        *contents_out_len = span.size_int();
         return nullptr;
     } catch (const std::exception& e) {
         return wilton::support::alloc_copy(TRACEMSG(e.what() + "\nException raised"));

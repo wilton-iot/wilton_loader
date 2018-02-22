@@ -38,7 +38,7 @@ namespace loader {
 support::buffer load_module_resource(sl::io::span<const char> data) {
     char* out = nullptr;
     int out_len = 0;
-    char* err = wilton_load_resource(data.data(), static_cast<int>(data.size()),
+    char* err = wilton_load_resource(data.data(), data.size_int(),
             std::addressof(out), std::addressof(out_len));
     if (nullptr != err) {
         support::throw_wilton_error(err, TRACEMSG(err));
