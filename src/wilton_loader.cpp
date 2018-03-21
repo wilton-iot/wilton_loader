@@ -41,7 +41,7 @@
 
 namespace { // anonymous
 
-const std::string LOGGER = std::string("wilton.loader");
+const std::string logger = std::string("wilton.loader");
 
 std::atomic_bool initialized{false};
 
@@ -79,15 +79,15 @@ sl::io::span<char> read_fs_resource(const std::string& path) {
 }
 
 sl::io::span<char> read_zip_or_fs_resource(const std::string& url) {
-    wilton::support::log_debug(LOGGER, "Loading resource, URL: [" + url + "] ...");
+    wilton::support::log_debug(logger, "Loading resource, URL: [" + url + "] ...");
     if (sl::utils::starts_with(url, wilton::support::file_proto_prefix)) {
         auto res = read_fs_resource(url.substr(wilton::support::file_proto_prefix.length()));
-        wilton::support::log_debug(LOGGER, "Resource loaded successfully, size: [" + sl::support::to_string(res.size()) + "] ...");
+        wilton::support::log_debug(logger, "Resource loaded successfully, size: [" + sl::support::to_string(res.size()) + "] ...");
         return res;
     } else if (sl::utils::starts_with(url, wilton::support::zip_proto_prefix)) {
         auto zurl = url.substr(wilton::support::zip_proto_prefix.length());
         auto res = read_zip_resource(zurl);
-        wilton::support::log_debug(LOGGER, "Resource loaded successfully, size: [" + sl::support::to_string(res.size()) + "] ...");
+        wilton::support::log_debug(logger, "Resource loaded successfully, size: [" + sl::support::to_string(res.size()) + "] ...");
         return res;
     } else {
         throw wilton::support::exception(TRACEMSG("Unknown protocol prefix, url: [" + url + "]"));
