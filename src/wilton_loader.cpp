@@ -62,7 +62,7 @@ sl::io::span<char> read_zip_resource(const std::string& path) {
         if (path.length() > zippath.length() + 1 && sl::utils::starts_with(path_norm, zippath)) {
             auto en_path = path_norm.substr(zippath.length() + 1);
             auto stream = sl::unzip::open_zip_entry(idx, en_path);
-            auto src = sl::io::streambuf_source(stream.get());
+            auto src = sl::io::streambuf_source(stream->rdbuf());
             auto sink = sl::io::make_array_sink(wilton_alloc, wilton_free);
             sl::io::copy_all(src, sink);
             return sink.release();
