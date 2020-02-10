@@ -210,7 +210,7 @@ char* wilton_loader_initialize(const char* conf_json, int conf_json_len) /* noex
         }
 
         // prepare crypt params
-        auto crypt_call = cf["cryptCall"].as_string_or_throw("cryptCall");
+        auto crypt_call = cf["cryptCall"].as_string("");
         auto crypt_pars = init_crypt(crypt_call);
 
         // create context
