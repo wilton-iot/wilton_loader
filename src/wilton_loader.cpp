@@ -28,11 +28,18 @@
 #include <string>
 #include <vector>
 
+#include "openssl/evp.h"
+
 #include "staticlib/config.hpp"
+#include "staticlib/crypto.hpp"
 #include "staticlib/json.hpp"
 #include "staticlib/tinydir.hpp"
 #include "staticlib/unzip.hpp"
 #include "staticlib/utils.hpp"
+
+#include "wilton/wilton.h"
+#include "wilton/wiltoncall.h"
+#include "wilton/wilton_crypto.h"
 
 #include "wilton/support/alloc.hpp"
 #include "wilton/support/exception.hpp"
@@ -45,16 +52,44 @@ const std::string logger = std::string("wilton.loader");
 
 std::atomic_flag initialized = ATOMIC_FLAG_INIT;
 
+struct loader_ctx {
+    std::vector<sl::unzip::file_index> indices;
+    std::string crypt_key;
+    std::string init_vec;
+    std::string base_wlib_path;
+
+    loader_ctx() { }
+
+    loader_ctx(std::vector<sl::unzip::file_index> idx_list,
+            const std::string& key, const std::string& iv, const std::string& base_wlib) :
+    indices(std::move(idx_list)),
+    crypt_key(key.data(), key.length()),
+    init_vec(iv.data(), iv.length()),
+    base_wlib_path(base_wlib.data(), base_wlib.length()) { }
+
+    loader_ctx(const loader_ctx&) = delete;
+
+    loader_ctx& operator=(const loader_ctx&) = delete;
+
+    loader_ctx(loader_ctx&& other):
+    indices(std::move(other.indices)),
+    crypt_key(std::move(other.crypt_key)),
+    init_vec(std::move(other.init_vec)),
+    base_wlib_path(std::move(other.base_wlib_path)) { }
+
+    loader_ctx& operator=(loader_ctx&&) = delete;
+};
+
 // initialized from wilton_loader_initialize
-std::vector<sl::unzip::file_index>& static_modules_indices(
-        std::vector<sl::unzip::file_index> vec = std::vector<sl::unzip::file_index>()) {
-    static std::vector<sl::unzip::file_index> indices = std::move(vec);
-    return indices;
+loader_ctx& static_loader_context(loader_ctx ctx_in = loader_ctx()) {
+    static loader_ctx ctx = std::move(ctx_in);
+    return ctx;
 }
 
 sl::io::span<char> read_zip_resource(const std::string& path) {
+    loader_ctx& ctx = static_loader_context();
     // search modules.zip indices
-    for (auto& idx : static_modules_indices()) {
+    for (auto& idx : ctx.indices) {
         // normalize path
         auto path_norm = sl::tinydir::normalize_path(path);
         // load zip entry
@@ -64,7 +99,14 @@ sl::io::span<char> read_zip_resource(const std::string& path) {
             auto stream = sl::unzip::open_zip_entry(idx, en_path);
             auto src = sl::io::streambuf_source(stream->rdbuf());
             auto sink = sl::io::make_array_sink(wilton_alloc, wilton_free);
-            sl::io::copy_all(src, sink);
+            // normal loading
+            if (ctx.crypt_key.empty() || zippath == ctx.base_wlib_path) {
+                sl::io::copy_all(src, sink);
+            } else { // encrypted loading
+                auto crypt_sink = sl::crypto::make_decrypt_sink(sink, EVP_aes_256_cbc(),
+                        ctx.crypt_key, ctx.init_vec);
+                sl::io::copy_all(src, crypt_sink);
+            }
             return sink.release();
         }
     }
@@ -95,6 +137,45 @@ sl::io::span<char> read_zip_or_fs_resource(const std::string& url) {
     }
 }
 
+std::pair<std::string, std::string> init_crypt(const std::string& crypt_call) {
+    // check crypt enabled
+    if (crypt_call.empty()) {
+        return std::make_pair(std::string(), std::string());
+    }
+
+    // get secret
+    char* secret = nullptr;
+    int secret_len = 0;
+    auto err_secret = wiltoncall(crypt_call.c_str(), static_cast<int>(crypt_call.length()),
+            "{}", 2, std::addressof(secret), std::addressof(secret_len));
+    if (nullptr != err_secret) {
+        wilton::support::throw_wilton_error(err_secret, TRACEMSG(err_secret));
+    }
+    auto deferred_secret = sl::support::defer([secret]() STATICLIB_NOEXCEPT {
+        wilton_free(secret);
+    });
+
+    // create crypt params
+    char* key = nullptr;
+    int key_len = 0;
+    char* iv = nullptr;
+    int iv_len = 0;
+    char* err_key = wilton_crypto_aes_create_crypt_key(secret, secret_len,
+                std::addressof(key), std::addressof(key_len),
+                std::addressof(iv), std::addressof(iv_len));
+    if (nullptr != err_key) {
+        wilton::support::throw_wilton_error(err_key, TRACEMSG(err_key));
+    }
+    auto deferred_key = sl::support::defer([key, iv]() STATICLIB_NOEXCEPT {
+        wilton_free(key);
+        wilton_free(iv);
+    });
+    
+    auto key_str = std::string(key, static_cast<size_t>(key_len));
+    auto iv_str = std::string(iv, static_cast<size_t>(iv_len));
+    return std::make_pair(key_str, iv_str);
+}
+
 } // namespace
 
 char* wilton_loader_initialize(const char* conf_json, int conf_json_len) /* noexcept */ {
@@ -106,23 +187,50 @@ char* wilton_loader_initialize(const char* conf_json, int conf_json_len) /* noex
         if (initialized.test_and_set(std::memory_order_acq_rel)) {
             throw wilton::support::exception(TRACEMSG("'wilton_loader' is already initialized"));
         }
+
+        // prepare zip indices
         auto cf = sl::json::load({conf_json, conf_json_len});
         auto stdpath = cf["requireJs"]["baseUrl"].as_string_nonempty_or_throw("requireJs.baseUrl");
         auto vec = std::vector<sl::unzip::file_index>();
+        auto base_wlib_path = std::string();
         if (sl::utils::starts_with(stdpath, wilton::support::zip_proto_prefix)) {
             auto zippath = stdpath.substr(wilton::support::zip_proto_prefix.length());
-            auto zippath_norm = sl::tinydir::normalize_path(zippath);
-            vec.emplace_back(sl::unzip::file_index(zippath_norm));
+            base_wlib_path = sl::tinydir::normalize_path(zippath);
+            vec.emplace_back(sl::unzip::file_index(base_wlib_path));
         }
+        auto zipmods = std::vector<std::string>();
         for (auto& fi : cf["requireJs"]["paths"].as_object_or_throw("requireJs.paths")) {
             auto modpath = fi.val().as_string_nonempty_or_throw("requireJs.paths[]");
             if (sl::utils::starts_with(modpath, wilton::support::zip_proto_prefix)) {
                 auto zippath = modpath.substr(wilton::support::zip_proto_prefix.length());
                 auto zippath_norm = sl::tinydir::normalize_path(zippath);
                 vec.emplace_back(sl::unzip::file_index(zippath_norm));
+                zipmods.push_back(zippath_norm);
             }
         }
-        static_modules_indices(std::move(vec));
+
+        // prepare crypt params
+        auto crypt_call = cf["cryptCall"].as_string_or_throw("cryptCall");
+        auto crypt_pars = init_crypt(crypt_call);
+
+        // create context
+        auto ctx = loader_ctx(std::move(vec), crypt_pars.first, crypt_pars.second, base_wlib_path);
+        static_loader_context(std::move(ctx));
+
+        // check crypt sanity
+        if (!crypt_pars.first.empty()) { 
+            for (auto& path : zipmods) {
+                auto span = read_zip_resource(path + "/sanity.txt");
+                auto deferred = sl::support::defer([span]() STATICLIB_NOEXCEPT {
+                    wilton_free(span.data());
+                });
+                if (6 != span.size() || std::string("sanity") != std::string(span.data(), span.size())) {
+                    throw wilton::support::exception(TRACEMSG(
+                            "Decryption sanity check failed, path: [" + path + "]"));
+                }
+            }
+        }
+
         return nullptr;
     } catch (const std::exception& e) {
         return wilton::support::alloc_copy(TRACEMSG(e.what() + "\nException raised"));

@@ -26,7 +26,9 @@ set ( ${PROJECT_NAME}_DEPS
         staticlib_utils
         staticlib_json
         staticlib_tinydir
-        staticlib_unzip )
+        staticlib_unzip
+        staticlib_crypto
+        openssl )
 staticlib_pkg_check_modules ( ${PROJECT_NAME}_DEPS_PC REQUIRED ${PROJECT_NAME}_DEPS )
 
 # library
@@ -49,6 +51,7 @@ add_library ( ${PROJECT_NAME} SHARED
         
 target_link_libraries ( ${PROJECT_NAME} PRIVATE
         wilton_core
+        wilton_crypto
         wilton_logging
         wilton_zip
         ${${PROJECT_NAME}_DEPS_PC_LIBRARIES} )
@@ -61,6 +64,7 @@ target_include_directories ( ${PROJECT_NAME} BEFORE PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/src
         ${CMAKE_CURRENT_LIST_DIR}/include
         ${WILTON_DIR}/core/include
+        ${WILTON_DIR}/modules/wilton_crypto/include
         ${WILTON_DIR}/modules/wilton_logging/include
         ${${PROJECT_NAME}_DEPS_PC_INCLUDE_DIRS} )
         
