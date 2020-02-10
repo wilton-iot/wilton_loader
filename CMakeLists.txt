@@ -26,10 +26,12 @@ set ( ${PROJECT_NAME}_DEPS
         staticlib_utils
         staticlib_json
         staticlib_tinydir
-        staticlib_unzip
-        staticlib_crypto )
+        staticlib_unzip )
 staticlib_pkg_check_modules ( ${PROJECT_NAME}_DEPS_PC REQUIRED ${PROJECT_NAME}_DEPS )
-staticlib_pkg_check_modules ( ${PROJECT_NAME}_DEPS_OPENSSL_PC REQUIRED openssl )
+set ( ${PROJECT_NAME}_DEPS_CRYPTO
+        staticlib_crypto
+        openssl )
+    staticlib_pkg_check_modules ( ${PROJECT_NAME}_DEPS_CRYPTO_PC REQUIRED ${PROJECT_NAME}_DEPS_CRYPTO )
 
 # library
 set ( ${PROJECT_NAME}_PLATFORM_SRC ) 
@@ -68,7 +70,7 @@ target_include_directories ( ${PROJECT_NAME} BEFORE PRIVATE
         ${WILTON_DIR}/modules/wilton_crypto/include
         ${WILTON_DIR}/modules/wilton_logging/include
         ${${PROJECT_NAME}_DEPS_PC_INCLUDE_DIRS}
-        ${${PROJECT_NAME}_DEPS_OPENSSL_PC_INCLUDE_DIRS} )
+        ${${PROJECT_NAME}_DEPS_CRYPTO_PC_INCLUDE_DIRS} )
         
 target_compile_options ( ${PROJECT_NAME} PRIVATE ${${PROJECT_NAME}_DEPS_PC_CFLAGS_OTHER} )
 
